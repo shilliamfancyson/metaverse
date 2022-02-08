@@ -9,15 +9,27 @@ const io = require('socket.io')(server,
 
 class ConnectedUser {
     constructor(socket){
+        this.id_ = _USERS.length;
         this.pos_ = [Math.random() * 20, 0, Math.random() * 20];
         this.socket_ = socket;
+        this.socket_.on('pos', (d) => {
+            this.pos_ = [...d];
+            this.UpdateClients_();
+
+        
+        });
+        this.UpdateClients_();
+        
+
+    }
+
+    UpdateClients_() {
         this.socket_.emit('pos', this.pos_);
 
         for (let i = 0; i < _USERS.length; ++i){
-            _USERS[i].socket_.emit('pos', this.pos_);
-            this.socket_.emit('pos', _USERS[i].pos_);
+            _USERS[i].socket_.emit('pos', [this.id_,this.pos_]);
+            this.socket_.emit('pos', [_USERS[i].id_,_USERS[i].pos_]);
         }
-
     }
 }
 

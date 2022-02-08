@@ -3,7 +3,64 @@ import 'https://cdn.jsdelivr.net/npm/socket.io-client@3.1.0/dist/socket.io.js';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.118/build/three.module.js';
 
 import {OrbitControls} from 'https://cdn.jsdelivr.net/npm/three@0.118/examples/jsm/controls/OrbitControls.js';
+import {FBXLoader} from 'https://cdn.jsdelivr.net/npm/three@0.118.1/examples/jsm/loaders/FBXLoader.js';
+import {GLTFLoader} from 'https://cdn.jsdelivr.net/npm/three@0.118.1/examples/jsm/loaders/GLTFLoader.js';
+// class BasicCharacterControllerProxy {
+//     constructor(){
 
+//     }
+// };
+// class BasicCharacterController {
+//     constructor(){
+//         this._input = new BasicCharacterControllerInput();
+//         this._stateMachine = new FiniteStateMachine(new BasicCharacterControllerProxy(this));
+//         this._LoadModels();
+//     }
+
+//     _LoadModels() {
+//         const loader = new FBXLoader();
+//         loader.setPath('./resources/fbx/');
+//         loader.load('Pug.fbx', (fbx) => {
+//           fbx.scale.setScalar(0.1);
+//           fbx.traverse(c => {
+//             c.castShadow = true;
+//           });
+    
+//           this._target = fbx;
+//           this._params.scene.add(this._target);
+    
+//           this._mixer = new THREE.AnimationMixer(this._target);
+    
+//           this._manager = new THREE.LoadingManager();
+//           this._manager.onLoad = () => {
+//             this._stateMachine.SetState('walk');
+//           };
+    
+//           const _OnLoad = (animName, anim) => {
+//             const clip = anim.animations[0];
+//             const action = this._mixer.clipAction(clip);
+      
+//             this._animations[animName] = {
+//               clip: clip,
+//               action: action,
+//             };
+//           };
+//         const loader = new FBXLoader(this._manager);
+//         loader.setPath('./resources/fbx/');
+//         loader.load('Pug.fbx', (a) => { _OnLoad('walk', a); });
+//         });
+//     };
+// };
+// class BasicCharacterControllerInput {
+//     constructor(){
+
+//     }
+// };
+// class FiniteStateMachine {
+//     constructor(){
+
+//     }
+// };
 
 class BasicWorldDemo {
   constructor() {
@@ -116,21 +173,84 @@ class BasicWorldDemo {
     // box.receiveShadow = true;
     // this._scene.add(box);
 
+    document.addEventListener('keyup', (e) => {
+        switch(e.keyCode){
+            case 87: //w
+                this.mainPlayer.position.z += 2.5;
+                break;
+            
+            case 65: //a
+                this.mainPlayer.position.x -= 2.5;
+                break;
+            
+            case 83: //s
+                this.mainPlayer.position.z -= 2.5;
+                break;
+
+            case 68: //d
+                this.mainPlayer.position.x += 2.5;
+                break;
+
+
+        }
+        this.socket_.emit('pos', this.mainPlayer.position.toArray());
+    });
+    this.players_ = {};
+    this.mainPlayer = null;
+
     this.socket_ = io('localhost:3000', {transports: ['websocket']});
 
     this.socket_.on('pos', (d) => {
-        const box = new THREE.Mesh(
-            new THREE.BoxGeometry(2, 2, 2),
-            new THREE.MeshStandardMaterial({
-                color: 0xFFFFFF,
-            }));
-          box.position.set(...d);
-          box.castShadow = true;
-          box.receiveShadow = true;
-          this._scene.add(box);
-    })
+        const [id, pos] = d;
+        
+        if (!(id in this.players_)){
+            const box = new THREE.Mesh(
+                new THREE.BoxGeometry(2, 2, 2),
+                new THREE.MeshStandardMaterial({
+                    color: 0xFFFFFF,
+                }));
+              box.position.set(...d);
+              box.castShadow = true;
+              box.receiveShadow = true;
+              this._scene.add(box);
+              this.players_[id] = box;
+              if (!this.mainPlayer) {
+                  this.mainPlayer = box;
+              }
+        }
+
+        this.players_[id].position.set(...pos);
+        
+    });
+
+    this._mixers = [];
+    this._previousRAF = null;
+
+    this._LoadAnimatedModel();
 
     this._RAF();
+  }
+
+  _LoadAnimatedModel() {
+    const loader = new FBXLoader();
+    loader.setPath('./resources/fbx/');
+    loader.load('Pug.fbx', (fbx) => {
+      fbx.scale.setScalar(0.1);
+      fbx.traverse(c => {
+        c.castShadow = true;
+      });
+    //   fbx.position.copy(offset);
+
+      const anim = new FBXLoader();
+      anim.setPath('./resources/fbx/');
+      anim.load('Pug.fbx', (anim) => {
+        const m = new THREE.AnimationMixer(fbx);
+        this._mixers.push(m);
+        const idle = m.clipAction(anim.animations[0]);
+        idle.play();
+      });
+      this._scene.add(fbx);
+    });
   }
 
   _OnWindowResize() {
@@ -140,11 +260,30 @@ class BasicWorldDemo {
   }
 
   _RAF() {
-    requestAnimationFrame(() => {
-      this._threejs.render(this._scene, this._camera);
+    requestAnimationFrame((t) => {
+      if (this._previousRAF === null) {
+        this._previousRAF = t;
+      }
+
       this._RAF();
+
+      this._threejs.render(this._scene, this._camera);
+      this._Step(t - this._previousRAF);
+      this._previousRAF = t;
     });
   }
+
+  _Step(timeElapsed) {
+    const timeElapsedS = timeElapsed * 0.001;
+    if (this._mixers) {
+      this._mixers.map(m => m.update(timeElapsedS));
+    }
+
+    if (this._controls) {
+      this._controls.Update(timeElapsedS);
+    }
+  }
+
 }
 
 
